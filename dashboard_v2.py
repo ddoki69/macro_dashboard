@@ -19,8 +19,16 @@ from pandas.tseries.offsets import DateOffset
 try:
     from pykrx.stock import get_market_trading_value_by_date
 except ImportError:
-    st.error("`pykrx` 라이브러리가 설치되지 않았습니다. 터미널에서 `pip install pykrx`를 실행해주세요.")
+    # [v23] 에러 메시지를 더 구체적으로 변경
+    st.error(
+        "`pykrx` 라이브러리를 임포트하지 못했습니다. "
+        "1. GitHub에 `requirements.txt` 파일이 올바르게 반영되었는지 확인하세요. "
+        "2. Streamlit Cloud 대시보드에서 앱 '...' 메뉴 -> 'Reboot'를 실행하세요. "
+        "3. 그래도 실패하면 'Settings' -> 'Clear cache'를 시도하세요. "
+        "4. Streamlit Cloud 앱 로그에서 `pip install -r requirements.txt` 과정 중 오류가 없는지 확인하세요."
+    )
     st.stop()
+# --- [v23] 끝 ---
 
 # --- 페이지 설정 ---
 st.set_page_config(
