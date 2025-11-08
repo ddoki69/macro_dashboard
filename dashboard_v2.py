@@ -15,6 +15,13 @@ except ImportError:
 # --- [v18] 날짜 계산을 위한 pandas DateOffset 임포트 ---
 from pandas.tseries.offsets import DateOffset
 
+# --- [v22] pykrx 라이브러리 임포트 ---
+try:
+    from pykrx.stock import get_market_trading_value_by_date
+except ImportError:
+    st.error("`pykrx` 라이브러리가 설치되지 않았습니다. 터미널에서 `pip install pykrx`를 실행해주세요.")
+    st.stop()
+
 # --- 페이지 설정 ---
 st.set_page_config(
     page_title="글로벌 매크로 및 국내 증시 대시보드",
@@ -26,47 +33,43 @@ st.title("📊 글로벌 매크로 & 국내 증시 대시보드")
 st.caption(f"데이터 기준일: {datetime.now().strftime('%Y-%m-%d')}")
 
 # --- [v21] FRED API 키는 Streamlit Secrets에서 불러옵니다 ---
-# GitHub에 키를 절대 올리지 마세요.
-# FRED_API_KEY = "..." <- [v21] 이 줄을 삭제하고 st.secrets를 사용합니다.
-# --- [v21] 끝 ---
+# (코드에는 API 키가 없습니다)
 
 # --- [v15 & v19] 데이터 소스 분리 (AI 티커 추가) ---
 # 1. YFinance로 가져올 티커
 YFINANCE_TICKERS = {
     # 금리
-    'US_10Y_Yield': '^TNX',
-    'US_3M_Yield': '^IRX',
+    'US_10Y_Yield': '^TNX',       
+    'US_3M_Yield': '^IRX',       
     # 신용
-    'High_Yield_Bond': 'HYG',
-    'Inv_Grade_Bond': 'LQD',
+    'High_Yield_Bond': 'HYG',    
+    'Inv_Grade_Bond': 'LQD',     
     # 인플레이션 프록시
-    'Crude_Oil': 'CL=F',
-    'Gold': 'GC=F',
-    'Copper': 'HG=F',
-    'TIPS_ETF': 'TIP',
+    'Crude_Oil': 'CL=F',         
+    'Gold': 'GC=F',              
+    'Copper': 'HG=F',            
+    'TIPS_ETF': 'TIP',           
     # 국내 증시
-    'KOSPI': '^KS11',
-    'KOSDAQ': '^KQ11',
+    'KOSPI': '^KS11',            
+    'KOSDAQ': '^KQ11',           
     # [v19] AI 프록시
     'Semiconductor_ETF': 'SMH',  # 반도체 ETF (AI 하드웨어)
-    'Cloud_ETF': 'SKYY'  # 클라우드 ETF (AI 플랫폼)
+    'Cloud_ETF': 'SKYY'          # 클라우드 ETF (AI 플랫폼)
 }
 
 # 2. FRED API로 가져올 티커
 FRED_TICKERS = {
-    'Fed_Funds': 'DFF',  # 연준 실효 금리
-    '10Y_Breakeven': 'T10YIE',  # 10년 기대 인플레이션
+    'Fed_Funds': 'DFF',          # 연준 실효 금리
+    '10Y_Breakeven': 'T10YIE',    # 10년 기대 인플레이션
 }
-
+# 3. [v22] PYKRX로 가져올 데이터 (티커맵 불필요)
 
 # --- [v15] YFinance 데이터 로더 (캐시) ---
-@st.cache_data(ttl=3600)  # 1시간 캐시
-# --- [v18] 시작일을 2010년으로 변경 ---
+@st.cache_data(ttl=3600) # 1시간 캐시
 def load_yfinance_data(tickers_map, start_date="2010-01-01"):
     st.info(f"YFinance 데이터 다운로드 시도 (시작일: {start_date}): {list(tickers_map.values())}")
     try:
         data = yf.download(list(tickers_map.values()), start=start_date)
-        # --- [v18] 끝 ---
         if data.empty:
             st.error("YFinance: 데이터가 비어있습니다.")
             return pd.DataFrame(), pd.DataFrame()
@@ -91,45 +94,41 @@ def load_yfinance_data(tickers_map, start_date="2010-01-01"):
         # 컬럼 이름 변경
         downloaded_cols = prices_data.columns
         rename_map = {v: k for k, v in tickers_map.items() if v in downloaded_cols}
-
+        
         adj_close = prices_data.rename(columns=rename_map)
         volume = volume_data.rename(columns=rename_map)
-
+        
         # 시간대 정보 제거
         try:
             adj_close.index = adj_close.index.tz_localize(None)
             volume.index = volume.index.tz_localize(None)
-        except TypeError:
-            pass  # 이미 naive
+        except TypeError: pass # 이미 naive
 
         valid_cols = list(rename_map.values())
         valid_volume_cols = [col for col in valid_cols if col in volume.columns]
-
+        
         return adj_close[valid_cols], volume[valid_volume_cols]
 
     except Exception as e:
         st.error(f"YFinance 데이터 로드 중 오류: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
-
 # --- [v15] FRED API 데이터 로더 (캐시) ---
-@st.cache_data(ttl=3600)  # 1시간 캐시
-# --- [v21] st.secrets에서 API 키를 가져오도록 수정 ---
-def load_fred_data(tickers_map, start_date="2010-01-01"):
-    # API 키를 st.secrets에서 불러옵니다.
+@st.cache_data(ttl=3600) # 1시간 캐시
+def load_fred_data(tickers_map, start_date="2010-01-01"): 
     api_key = st.secrets.get("FRED_API_KEY")
-
+    
     if not api_key:
         st.warning("FRED API 키가 설정되지 않았습니다. `DFF`, `T10YIE` 데이터는 생략됩니다.")
         st.info("로컬 실행 시 .streamlit/secrets.toml 파일을, 클라우드 배포 시 Secrets 설정을 확인하세요.")
         return pd.DataFrame()
-
+    
     st.info(f"FRED API 데이터 다운로드 시도 (시작일: {start_date}): {list(tickers_map.values())}")
-
+    
     try:
         fred = Fred(api_key=api_key)
         all_series = []
-
+        
         for name, ticker in tickers_map.items():
             try:
                 series = fred.get_series(ticker, start_date=start_date)
@@ -142,15 +141,13 @@ def load_fred_data(tickers_map, start_date="2010-01-01"):
         if not all_series:
             st.error("FRED: 모든 티커 로드에 실패했습니다.")
             return pd.DataFrame()
-
+            
         df_fred = pd.concat(all_series, axis=1)
-
-        # 시간대 정보 제거
+        
         try:
             df_fred.index = df_fred.index.tz_localize(None)
-        except TypeError:
-            pass  # 이미 naive
-
+        except TypeError: pass 
+            
         st.success("FRED API 데이터 로드 성공.")
         return df_fred
 
@@ -164,19 +161,53 @@ def load_fred_data(tickers_map, start_date="2010-01-01"):
         st.error(f"FRED API 로드 중 치명적 오류: {e}")
         return pd.DataFrame()
 
+# --- [v22] pykrx 외국인 수급 데이터 로더 (캐시) ---
+@st.cache_data(ttl=3600) # 1시간 캐시
+def load_pykrx_data(start_date="2010-01-01"):
+    st.info("PYKRX 외국인 수급 데이터 다운로드 시도...")
+    try:
+        start_str = pd.to_datetime(start_date).strftime('%Y%m%d')
+        end_str = datetime.now().strftime('%Y%m%d')
 
-# --- [v15] 메인 데이터 로드 및 병합 ---
+        # KOSPI 수급
+        df_kospi = get_market_trading_value_by_date(start_str, end_str, "KOSPI")
+        # KOSDAQ 수급
+        df_kosdaq = get_market_trading_value_by_date(start_str, end_str, "KOSDAQ")
+
+        # '외국인' 순매수 데이터만 추출 (단위: 10억 원)
+        df_kospi_foreign = (df_kospi[['외국인']] / 1_000_000_000).rename(columns={'외국인': 'KOSPI_Foreign_Net'})
+        df_kosdaq_foreign = (df_kosdaq[['외국인']] / 1_000_000_000).rename(columns={'외국인': 'KOSDAQ_Foreign_Net'})
+
+        df_pykrx = pd.concat([df_kospi_foreign, df_kosdaq_foreign], axis=1)
+        
+        # pykrx는 인덱스 타임존이 없을 수 있음 (safe to run)
+        try:
+            df_pykrx.index = df_pykrx.index.tz_localize(None)
+        except TypeError: pass
+        
+        st.success("PYKRX 외국인 수급 데이터 로드 성공.")
+        return df_pykrx
+
+    except Exception as e:
+        st.error(f"PYKRX 데이터 로드 중 오류: {e}")
+        return pd.DataFrame()
+# --- [v22] 끝 ---
+
+# --- [v22] 메인 데이터 로드 및 병합 (3개 소스) ---
 with st.spinner("1. YFinance 데이터 로드 중..."):
     df_yf_prices, df_yf_volumes = load_yfinance_data(YFINANCE_TICKERS, start_date="2010-01-01")
 
 with st.spinner("2. FRED 데이터 로드 중... (API 키 확인)"):
-    # [v21] API 키 인자 제거. 함수가 내부적으로 st.secrets에서 가져옴
-    df_fred_prices = load_fred_data(FRED_TICKERS, start_date="2010-01-01")
+    df_fred_prices = load_fred_data(FRED_TICKERS, start_date="2010-01-01") 
+    
+with st.spinner("3. PYKRX 외국인 수급 데이터 로드 중..."):
+    df_pykrx_flow = load_pykrx_data(start_date="2010-01-01")
 
 # 데이터 병합
+# 1. YF + FRED
 if df_yf_prices.empty and df_fred_prices.empty:
-    st.error("모든 데이터 소스로부터 데이터를 불러오지 못했습니다. 인터넷 연결 및 API 키를 확인해주세요.")
-    st.stop()
+    st.error("YFinance와 FRED 데이터를 모두 불러오지 못했습니다.")
+    prices = pd.DataFrame()
 elif df_fred_prices.empty:
     st.info("YFinance 데이터만 로드되었습니다.")
     prices = df_yf_prices
@@ -187,13 +218,25 @@ else:
     st.info("YFinance와 FRED 데이터를 병합합니다.")
     prices = pd.merge(df_yf_prices, df_fred_prices, left_index=True, right_index=True, how='outer')
 
+# 2. (YF+FRED) + PYKRX
+if prices.empty and df_pykrx_flow.empty:
+    st.error("모든 데이터 소스로부터 데이터를 불러오지 못했습니다. 인터넷 연결 및 API 키를 확인해주세요.")
+    st.stop()
+elif df_pykrx_flow.empty:
+    st.warning("PYKRX 수급 데이터를 로드하지 못했습니다.")
+    # prices는 그대로 사용
+else:
+    st.info("PYKRX 수급 데이터를 병합합니다.")
+    prices = pd.merge(prices, df_pykrx_flow, left_index=True, right_index=True, how='outer')
+
+
 # 병합 후에는 주말/휴일 등으로 NaN이 발생하므로, ffill()로 채워줍니다.
 prices = prices.ffill()
-volumes = df_yf_volumes  # 거래량은 YFinance에만 있음
+volumes = df_yf_volumes # 거래량은 YFinance에만 있음
 
 # --- [v14] NAN 리포트 (ffill 후에도 남은 NaN) ---
 nan_report = prices.isna().sum()
-nan_cols = nan_report[nan_report == len(prices)]
+nan_cols = nan_report[nan_report == len(prices)] 
 if not nan_cols.empty:
     st.warning("다음 티커는 전체 기간 데이터를 불러오지 못했습니다 (NaN):")
     st.dataframe(nan_cols)
@@ -201,10 +244,10 @@ if not nan_cols.empty:
 
 # --- 차트 로직 ---
 if not prices.empty:
-
+    
     # --- [v18] 기간 선택 버튼 (Radio) ---
     st.sidebar.header("기간 선택 (Quick Select)")
-
+    
     # 기준 날짜 설정
     min_date = prices.index.min().date()
     max_date = prices.index.max().date()
@@ -218,7 +261,7 @@ if not prices.empty:
 
     # 선택된 기간에 따라 start_date, end_date 계산
     end_date = max_date
-
+    
     if selected_period == "1개월":
         start_date = (end_date - DateOffset(months=1)).date()
     elif selected_period == "3개월":
@@ -239,7 +282,7 @@ if not prices.empty:
     # 계산된 시작일이 실제 데이터의 최소 날짜보다 빠르면, 최소 날짜로 조정
     if start_date < min_date:
         start_date = min_date
-
+        
     st.sidebar.caption(f"선택된 기간: {start_date} ~ {end_date}")
     # --- [v1G] 기간 선택 로직 끝 ---
 
@@ -250,11 +293,11 @@ if not prices.empty:
         # --- (v10) .index.date와 date 객체를 직접 비교 ---
         prices_filtered = prices[
             (prices.index.date >= start_date) & (prices.index.date <= end_date)
-            ].dropna(how='all')
-
+        ].dropna(how='all')
+        
         volumes_filtered = volumes[
             (volumes.index.date >= start_date) & (volumes.index.date <= end_date)
-            ].dropna(how='all')
+        ].dropna(how='all')
 
         if prices_filtered.empty:
             st.warning("선택하신 기간에 데이터가 없습니다. 기간을 다시 설정해주세요.")
@@ -265,27 +308,27 @@ if not prices.empty:
             # --- 1. 미국 매크로 지표 ---
             with col1:
                 st.header("🇺🇸 미국 금리 지표")
-
+                
                 # 1-1. 국채 금리
                 st.subheader("정책금리 및 국채 금리 (Yield)")
                 fig_yield = go.Figure()
-
+                
                 if 'Fed_Funds' in prices_filtered.columns:
                     fig_yield.add_trace(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['Fed_Funds'],
+                        x=prices_filtered.index, y=prices_filtered['Fed_Funds'], 
                         name='연준 실효 금리 (DFF)', line=dict(color='red', dash='dot')
                     ))
                 if 'US_10Y_Yield' in prices_filtered.columns:
                     fig_yield.add_trace(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['US_10Y_Yield'],
+                        x=prices_filtered.index, y=prices_filtered['US_10Y_Yield'], 
                         name='미 10년물 금리 (%)', line=dict(color='blue')
                     ))
                 if 'US_3M_Yield' in prices_filtered.columns:
                     fig_yield.add_trace(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['US_3M_Yield'],
+                        x=prices_filtered.index, y=prices_filtered['US_3M_Yield'], 
                         name='미 3개월물 금리 (%)', line=dict(color='orange')
                     ))
-
+                
                 fig_yield.update_layout(
                     yaxis_title="금리 (%)",
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
@@ -297,10 +340,10 @@ if not prices.empty:
                 if 'US_10Y_Yield' in prices_filtered.columns and 'US_3M_Yield' in prices_filtered.columns:
                     spread_df = prices_filtered[['US_10Y_Yield', 'US_3M_Yield']].dropna()
                     yield_spread = spread_df['US_10Y_Yield'] - spread_df['US_3M_Yield']
-
+                    
                     if not yield_spread.empty:
                         fig_spread = go.Figure(go.Scatter(
-                            x=yield_spread.index, y=yield_spread,
+                            x=yield_spread.index, y=yield_spread, 
                             name='10Y-3M Spread', line=dict(color='red'), fill='tozeroy'
                         ))
                         fig_spread.add_hline(y=0, line_dash="dash", line_color="grey")
@@ -314,12 +357,12 @@ if not prices.empty:
                 if 'High_Yield_Bond' in prices_filtered.columns:
                     fig_credit = go.Figure()
                     fig_credit.add_trace(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['High_Yield_Bond'],
+                        x=prices_filtered.index, y=prices_filtered['High_Yield_Bond'], 
                         name='HYG (하이일드/위험)', line=dict(color='purple')
                     ))
                     if 'Inv_Grade_Bond' in prices_filtered.columns:
                         fig_credit.add_trace(go.Scatter(
-                            x=prices_filtered.index, y=prices_filtered['Inv_Grade_Bond'],
+                            x=prices_filtered.index, y=prices_filtered['Inv_Grade_Bond'], 
                             name='LQD (투자등급/안전)', line=dict(color='cyan', dash='dash')
                         ))
                     fig_credit.update_layout(
@@ -342,12 +385,12 @@ if not prices.empty:
             # --- 2. 원자재 및 인플레이션 프록시 ---
             st.header("📈 원자재 및 인플레이션 프록시 (Daily)")
             col3, col4 = st.columns(2)
-
+            
             with col3:
                 st.subheader("WTI 유가 (Crude Oil)")
                 if 'Crude_Oil' in prices_filtered.columns:
                     fig_oil = go.Figure(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['Crude_Oil'],
+                        x=prices_filtered.index, y=prices_filtered['Crude_Oil'], 
                         name='WTI Crude Oil ($)', line=dict(color='green')
                     ))
                     st.plotly_chart(fig_oil, use_container_width=True)
@@ -355,16 +398,16 @@ if not prices.empty:
                 st.subheader("구리 (Dr. Copper)")
                 if 'Copper' in prices_filtered.columns:
                     fig_copper = go.Figure(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['Copper'],
+                        x=prices_filtered.index, y=prices_filtered['Copper'], 
                         name='Copper ($)', line=dict(color='brown')
                     ))
                     st.plotly_chart(fig_copper, use_container_width=True)
-
+            
             with col4:
                 st.subheader("금 (Gold)")
                 if 'Gold' in prices_filtered.columns:
                     fig_gold = go.Figure(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['Gold'],
+                        x=prices_filtered.index, y=prices_filtered['Gold'], 
                         name='Gold ($)', line=dict(color='gold')
                     ))
                     st.plotly_chart(fig_gold, use_container_width=True)
@@ -372,28 +415,28 @@ if not prices.empty:
                 st.subheader("물가연동채 ETF (TIPS)")
                 if 'TIPS_ETF' in prices_filtered.columns:
                     fig_tips = go.Figure(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['TIPS_ETF'],
+                        x=prices_filtered.index, y=prices_filtered['TIPS_ETF'], 
                         name='TIPS ETF Price ($)', line=dict(color='teal')
                     ))
                     st.plotly_chart(fig_tips, use_container_width=True)
-
+            
             st.divider()
 
-            # --- 3. 국내 증시 ---
+            # --- 3. 국내 증시 (v22 - 수급 차트 추가) ---
             st.header("🇰🇷 국내 증시 (KOSPI & KOSDAQ)")
-            col5, col6 = st.columns(2)
-
+            col5, col6 = st.columns(2) 
+            
             with col5:
                 st.subheader("KOSPI 지수 및 거래량")
                 if 'KOSPI' in prices_filtered.columns:
                     fig_kospi = go.Figure()
                     fig_kospi.add_trace(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['KOSPI'],
+                        x=prices_filtered.index, y=prices_filtered['KOSPI'], 
                         name='KOSPI 지수', line=dict(color='blue')
                     ))
                     if 'KOSPI' in volumes.columns:
                         fig_kospi.add_trace(go.Bar(
-                            x=volumes_filtered.index, y=volumes_filtered['KOSPI'],
+                            x=volumes_filtered.index, y=volumes_filtered['KOSPI'], 
                             name='거래량', yaxis='y2', marker_color='lightblue'
                         ))
                     fig_kospi.update_layout(
@@ -402,18 +445,42 @@ if not prices.empty:
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
                     st.plotly_chart(fig_kospi, use_container_width=True)
+                
+                # --- [v22] KOSPI 외국인 수급 ---
+                st.subheader("KOSPI 외국인 순매수 (10억 원)")
+                if 'KOSPI_Foreign_Net' in prices_filtered.columns:
+                    flow_data = prices_filtered['KOSPI_Foreign_Net'].dropna()
+                    flow_data_cum = flow_data.cumsum()
+                    
+                    fig_kospi_flow = go.Figure()
+                    # 일별 순매수 (막대)
+                    fig_kospi_flow.add_trace(go.Bar(
+                        x=flow_data.index, y=flow_data,
+                        name='일별 순매수', marker_color='blue'
+                    ))
+                    # 누적 순매수 (선)
+                    fig_kospi_flow.add_trace(go.Scatter(
+                        x=flow_data_cum.index, y=flow_data_cum,
+                        name='누적 순매수', line=dict(color='red'), yaxis='y2'
+                    ))
+                    fig_kospi_flow.update_layout(
+                        yaxis=dict(title='일별 (10억 원)'),
+                        yaxis2=dict(title='누적 (10억 원)', overlaying='y', side='right', showgrid=False),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    st.plotly_chart(fig_kospi_flow, use_container_width=True)
 
             with col6:
                 st.subheader("KOSDAQ 지수 및 거래량")
                 if 'KOSDAQ' in prices_filtered.columns:
                     fig_kosdaq = go.Figure()
                     fig_kosdaq.add_trace(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['KOSDAQ'],
+                        x=prices_filtered.index, y=prices_filtered['KOSDAQ'], 
                         name='KOSDAQ 지수', line=dict(color='red')
                     ))
                     if 'KOSDAQ' in volumes.columns:
                         fig_kosdaq.add_trace(go.Bar(
-                            x=volumes_filtered.index, y=volumes_filtered['KOSDAQ'],
+                            x=volumes_filtered.index, y=volumes_filtered['KOSDAQ'], 
                             name='거래량', yaxis='y2', marker_color='pink'
                         ))
                     fig_kosdaq.update_layout(
@@ -422,8 +489,33 @@ if not prices.empty:
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
                     st.plotly_chart(fig_kosdaq, use_container_width=True)
+                
+                # --- [v22] KOSDAQ 외국인 수급 ---
+                st.subheader("KOSDAQ 외국인 순매수 (10억 원)")
+                if 'KOSDAQ_Foreign_Net' in prices_filtered.columns:
+                    flow_data_kq = prices_filtered['KOSDAQ_Foreign_Net'].dropna()
+                    flow_data_kq_cum = flow_data_kq.cumsum()
+                    
+                    fig_kosdaq_flow = go.Figure()
+                    # 일별 순매수 (막대)
+                    fig_kosdaq_flow.add_trace(go.Bar(
+                        x=flow_data_kq.index, y=flow_data_kq,
+                        name='일별 순매수', marker_color='red'
+                    ))
+                    # 누적 순매수 (선)
+                    fig_kosdaq_flow.add_trace(go.Scatter(
+                        x=flow_data_kq_cum.index, y=flow_data_kq_cum,
+                        name='누적 순매수', line=dict(color='blue'), yaxis='y2'
+                    ))
+                    fig_kosdaq_flow.update_layout(
+                        yaxis=dict(title='일별 (10억 원)'),
+                        yaxis2=dict(title='누적 (10억 원)', overlaying='y', side='right', showgrid=False),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    st.plotly_chart(fig_kosdaq_flow, use_container_width=True)
+            # --- [v22] 끝 ---
 
-            st.divider()  # [v19] 구분선 추가
+            st.divider() # [v19] 구분선 추가
 
             # --- [v19] 4. AI & Tech 프록시 ---
             st.header("🤖 AI & Tech 인프라 (Proxies)")
@@ -433,7 +525,7 @@ if not prices.empty:
                 st.subheader("반도체 ETF (Hardware)")
                 if 'Semiconductor_ETF' in prices_filtered.columns:
                     fig_smh = go.Figure(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['Semiconductor_ETF'],
+                        x=prices_filtered.index, y=prices_filtered['Semiconductor_ETF'], 
                         name='SMH ($)', line=dict(color='cyan')
                     ))
                     st.plotly_chart(fig_smh, use_container_width=True)
@@ -442,7 +534,7 @@ if not prices.empty:
                 st.subheader("클라우드 ETF (Platform)")
                 if 'Cloud_ETF' in prices_filtered.columns:
                     fig_skyy = go.Figure(go.Scatter(
-                        x=prices_filtered.index, y=prices_filtered['Cloud_ETF'],
+                        x=prices_filtered.index, y=prices_filtered['Cloud_ETF'], 
                         name='SKYY ($)', line=dict(color='magenta')
                     ))
                     st.plotly_chart(fig_skyy, use_container_width=True)
@@ -456,16 +548,16 @@ if not prices.empty:
             # --- [v20] 끝 ---
 
             available_cols = list(prices_filtered.columns)
-
+            
             selected_cols = st.multiselect(
                 "비교할 지표를 선택하세요:",
                 options=available_cols,
-                default=available_cols
+                default=available_cols 
             )
 
             if selected_cols:
                 df_to_normalize = prices_filtered[selected_cols].dropna(axis=1, how='all')
-
+                
                 if df_to_normalize.empty:
                     st.warning("선택된 지표 중 유효한 데이터가 없습니다.")
                 else:
@@ -475,29 +567,29 @@ if not prices.empty:
                         df_std = df_to_normalize.std()
                         df_normalized = (df_to_normalize - df_mean) / df_std
                         # --- [v20] 끝 ---
-
+                        
                         fig_all = go.Figure()
                         for col in df_normalized.columns:
                             fig_all.add_trace(go.Scatter(
-                                x=df_normalized.index,
-                                y=df_normalized[col],
+                                x=df_normalized.index, 
+                                y=df_normalized[col], 
                                 name=col
                             ))
-
-                        fig_all.add_hline(y=0, line_dash="dash", line_color="grey")  # 0 = 평균선
-
+                        
+                        fig_all.add_hline(y=0, line_dash="dash", line_color="grey") # 0 = 평균선
+                        
                         fig_all.update_layout(
-                            yaxis_title="Z-Score (표준편차)",  # [v20] Y축 이름 변경
+                            yaxis_title="Z-Score (표준편차)", # [v20] Y축 이름 변경
                             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                         )
-
+                        
                         st.plotly_chart(fig_all, use_container_width=True)
 
                     except IndexError:
                         st.warning("선택된 기간이나 지표에 유효한 데이터가 없어 정규화 차트를 그릴 수 없습니다.")
                     except Exception as e:
                         st.error(f"종합 비교 차트 생성 중 오류 발생: {e}")
-
+            
             else:
                 st.info("비교할 지표를 1개 이상 선택해주세요.")
 
@@ -511,12 +603,15 @@ else:
 st.sidebar.header("안내")
 st.sidebar.info(
     """
-    이 대시보드는 `yfinance`와 `fredapi`를 함께 사용하여 데이터를 시각화합니다.
+    이 대시보드는 `yfinance`, `fredapi`, `pykrx`를 함께 사용하여 데이터를 시각화합니다.
     Streamlit Cloud Secrets에 `FRED_API_KEY`가 설정되어야 합니다.
-
+    
     **[AI/Tech 프록시]**
     - `SMH`: 반도체 ETF
     - `SKYY`: 클라우드 ETF
+    
+    **[국내 수급]**
+    - `pykrx` 라이브러리로 외국인 순매수(일별/누적) 표시
     """
 )
 st.sidebar.header("실행 방법")
