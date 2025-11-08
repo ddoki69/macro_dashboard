@@ -3,4 +3,4 @@ yfinance
 pandas
 plotly
 fredapi
-pykrx==1.0.48
+pykrx
