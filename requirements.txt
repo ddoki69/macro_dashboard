@@ -3,6 +3,3 @@ yfinance
 pandas
 plotly
 fredapi
-FinanceDataReader
-beautifulsoup4
-lxml
