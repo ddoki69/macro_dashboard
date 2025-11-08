@@ -1,4 +1,4 @@
-# v26: pykrx -> FinanceDataReader (FDR)로 라이브러리 교체
+# v21: 'v20' (Z-Score) 버전을 기반으로, API 키를 st.secrets로 분리
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -16,16 +16,7 @@ except ImportError:
 # --- [v18] 날짜 계산을 위한 pandas DateOffset 임포트 ---
 from pandas.tseries.offsets import DateOffset
 
-# --- [v26] FinanceDataReader 라이브러리 임포트 ---
-try:
-    import FinanceDataReader as fdr
-except ImportError:
-    st.error(
-        "`FinanceDataReader` 라이브러리를 임포트하지 못했습니다. "
-        "GitHub에 `requirements.txt` 파일이 올바르게 반영되었는지 확인하고 앱을 'Reboot' 하세요."
-    )
-    st.stop()
-# --- [v26] 끝 ---
+# --- [v25] pykrx/fdr 임포트 제거 ---
 
 # --- 페이지 설정 ---
 st.set_page_config(
@@ -67,7 +58,6 @@ FRED_TICKERS = {
     'Fed_Funds': 'DFF',          # 연준 실효 금리
     '10Y_Breakeven': 'T10YIE',    # 10년 기대 인플레이션
 }
-# 3. [v26] FDR로 가져올 데이터 (티커맵 불필요)
 
 # --- [v15] YFinance 데이터 로더 (캐시) ---
 @st.cache_data(ttl=3600) # 1시간 캐시
@@ -121,6 +111,7 @@ def load_yfinance_data(tickers_map, start_date="2010-01-01"):
 # --- [v15] FRED API 데이터 로더 (캐시) ---
 @st.cache_data(ttl=3600) # 1시간 캐시
 def load_fred_data(tickers_map, start_date="2010-01-01"): 
+    # [v21] st.secrets에서 키 가져오기
     api_key = st.secrets.get("FRED_API_KEY")
     
     if not api_key:
@@ -166,57 +157,19 @@ def load_fred_data(tickers_map, start_date="2010-01-01"):
         st.error(f"FRED API 로드 중 치명적 오류: {e}")
         return pd.DataFrame()
 
-# --- [v26] FinanceDataReader 외국인 수급 데이터 로더 (캐시) ---
-@st.cache_data(ttl=3600) # 1시간 캐시
-def load_fdr_data(start_date="2010-01-01"):
-    st.info("FinanceDataReader 외국인 수급 데이터 다운로드 시도...")
-    try:
-        start_str = pd.to_datetime(start_date).strftime('%Y%m%d')
-        end_str = datetime.now().strftime('%Y%m%d')
+# --- [v25] pykrx/fdr 로더 삭제 ---
 
-        # FDR은 날짜 범위를 지정하여 투자자별 거래실적을 가져옵니다.
-        df_fdr = fdr.Investor(start_str, end_str)
-
-        # 필요한 컬럼 ('KOSPI', '외국인'), ('KOSDAQ', '외국인')
-        if ('KOSPI', '외국인') not in df_fdr.columns or ('KOSDAQ', '외국인') not in df_fdr.columns:
-            st.warning("FDR: '외국인' 수급 데이터를 찾을 수 없습니다. (컬럼명 불일치)")
-            return pd.DataFrame()
-
-        # 데이터는 이미 원(KRW) 단위의 순매수 금액입니다.
-        df_kospi = df_fdr[('KOSPI', '외국인')]
-        df_kosdaq = df_fdr[('KOSDAQ', '외국인')]
-        
-        # 단위: 10억 원
-        df_kospi_foreign = (df_kospi / 1_000_000_000).rename('KOSPI_Foreign_Net')
-        df_kosdaq_foreign = (df_kosdaq / 1_000_000_000).rename('KOSDAQ_Foreign_Net')
-
-        df_merged = pd.concat([df_kospi_foreign, df_kosdaq_foreign], axis=1)
-        
-        # FDR 인덱스는 이미 DatetimeIndex이며, 시간대 정보가 없습니다 (naive).
-        
-        st.success("FinanceDataReader 수급 데이터 로드 성공.")
-        return df_merged
-
-    except Exception as e:
-        st.error(f"FinanceDataReader 로드 중 오류: {e}")
-        return pd.DataFrame()
-# --- [v26] 끝 ---
-
-# --- [v26] 메인 데이터 로드 및 병합 (3개 소스) ---
+# --- [v25] 메인 데이터 로드 및 병합 (2개 소스) ---
 with st.spinner("1. YFinance 데이터 로드 중..."):
     df_yf_prices, df_yf_volumes = load_yfinance_data(YFINANCE_TICKERS, start_date="2010-01-01")
 
 with st.spinner("2. FRED 데이터 로드 중... (API 키 확인)"):
     df_fred_prices = load_fred_data(FRED_TICKERS, start_date="2010-01-01") 
-    
-with st.spinner("3. FDR 외국인 수급 데이터 로드 중..."):
-    df_fdr_flow = load_fdr_data(start_date="2010-01-01")
 
-# 데이터 병합
-# 1. YF + FRED
+# 데이터 병합 (YF + FRED)
 if df_yf_prices.empty and df_fred_prices.empty:
     st.error("YFinance와 FRED 데이터를 모두 불러오지 못했습니다.")
-    prices = pd.DataFrame()
+    st.stop()
 elif df_fred_prices.empty:
     st.info("YFinance 데이터만 로드되었습니다.")
     prices = df_yf_prices
@@ -227,17 +180,7 @@ else:
     st.info("YFinance와 FRED 데이터를 병합합니다.")
     prices = pd.merge(df_yf_prices, df_fred_prices, left_index=True, right_index=True, how='outer')
 
-# 2. (YF+FRED) + FDR
-if prices.empty and df_fdr_flow.empty:
-    st.error("모든 데이터 소스로부터 데이터를 불러오지 못했습니다. 인터넷 연결 및 API 키를 확인해주세요.")
-    st.stop()
-elif df_fdr_flow.empty:
-    st.warning("FDR 수급 데이터를 로드하지 못했습니다.")
-    # prices는 그대로 사용
-else:
-    st.info("FDR 수급 데이터를 병합합니다.")
-    prices = pd.merge(prices, df_fdr_flow, left_index=True, right_index=True, how='outer')
-
+# --- [v25] pykrx/fdr 병합 로직 삭제 ---
 
 # 병합 후에는 주말/휴일 등으로 NaN이 발생하므로, ffill()로 채워줍니다.
 prices = prices.ffill()
@@ -431,7 +374,7 @@ if not prices.empty:
             
             st.divider()
 
-            # --- 3. 국내 증시 (v26 - FDR 수급 차트) ---
+            # --- 3. 국내 증시 (v25 - 수급 차트 제거) ---
             st.header("🇰🇷 국내 증시 (KOSPI & KOSDAQ)")
             col5, col6 = st.columns(2) 
             
@@ -455,29 +398,7 @@ if not prices.empty:
                     )
                     st.plotly_chart(fig_kospi, use_container_width=True)
                 
-                # --- [v26] KOSPI 외국인 수급 (FDR) ---
-                st.subheader("KOSPI 외국인 순매수 (10억 원)")
-                if 'KOSPI_Foreign_Net' in prices_filtered.columns:
-                    flow_data = prices_filtered['KOSPI_Foreign_Net'].dropna()
-                    flow_data_cum = flow_data.cumsum()
-                    
-                    fig_kospi_flow = go.Figure()
-                    # 일별 순매수 (막대)
-                    fig_kospi_flow.add_trace(go.Bar(
-                        x=flow_data.index, y=flow_data,
-                        name='일별 순매수', marker_color='blue'
-                    ))
-                    # 누적 순매수 (선)
-                    fig_kospi_flow.add_trace(go.Scatter(
-                        x=flow_data_cum.index, y=flow_data_cum,
-                        name='누적 순매수', line=dict(color='red'), yaxis='y2'
-                    ))
-                    fig_kospi_flow.update_layout(
-                        yaxis=dict(title='일별 (10억 원)'),
-                        yaxis2=dict(title='누적 (10억 원)', overlaying='y', side='right', showgrid=False),
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                    )
-                    st.plotly_chart(fig_kospi_flow, use_container_width=True)
+                # --- [v25] KOSPI 외국인 수급 차트 삭제 ---
 
             with col6:
                 st.subheader("KOSDAQ 지수 및 거래량")
@@ -499,30 +420,8 @@ if not prices.empty:
                     )
                     st.plotly_chart(fig_kosdaq, use_container_width=True)
                 
-                # --- [v26] KOSDAQ 외국인 수급 (FDR) ---
-                st.subheader("KOSDAQ 외국인 순매수 (10억 원)")
-                if 'KOSDAQ_Foreign_Net' in prices_filtered.columns:
-                    flow_data_kq = prices_filtered['KOSDAQ_Foreign_Net'].dropna()
-                    flow_data_kq_cum = flow_data_kq.cumsum()
-                    
-                    fig_kosdaq_flow = go.Figure()
-                    # 일별 순매수 (막대)
-                    fig_kosdaq_flow.add_trace(go.Bar(
-                        x=flow_data_kq.index, y=flow_data_kq,
-                        name='일별 순매수', marker_color='red'
-                    ))
-                    # 누적 순매수 (선)
-                    fig_kosdaq_flow.add_trace(go.Scatter(
-                        x=flow_data_kq_cum.index, y=flow_data_kq_cum,
-                        name='누적 순매수', line=dict(color='blue'), yaxis='y2'
-                    ))
-                    fig_kosdaq_flow.update_layout(
-                        yaxis=dict(title='일별 (10억 원)'),
-                        yaxis2=dict(title='누적 (10억 원)', overlaying='y', side='right', showgrid=False),
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                    )
-                    st.plotly_chart(fig_kosdaq_flow, use_container_width=True)
-            # --- [v26] 끝 ---
+                # --- [v25] KOSDAQ 외국인 수급 차트 삭제 ---
+            # --- [v25] 끝 ---
 
             st.divider() # [v19] 구분선 추가
 
@@ -612,15 +511,12 @@ else:
 st.sidebar.header("안내")
 st.sidebar.info(
     """
-    이 대시보드는 `yfinance`, `fredapi`, `FinanceDataReader`를 함께 사용하여 데이터를 시각화합니다.
+    이 대시보드는 `yfinance`와 `fredapi`를 함께 사용하여 데이터를 시각화합니다.
     Streamlit Cloud Secrets에 `FRED_API_KEY`가 설정되어야 합니다.
     
     **[AI/Tech 프록시]**
     - `SMH`: 반도체 ETF
     - `SKYY`: 클라우드 ETF
-    
-    **[국내 수급]**
-    - `FinanceDataReader` 라이브러리로 외국인 순매수(일별/누적) 표시
     """
 )
 st.sidebar.header("실행 방법")
