@@ -1,12 +1,14 @@
 글로벌 매크로 & 국내 증시 대시보드
 
-이 Streamlit 앱은 yfinance와 fredapi를 사용하여 주요 거시 경제 지표와 KOSPI/KOSDAQ 및 AI 관련 기술주 ETF를 추적하는 대시보드입니다.
+이 Streamlit 앱은 yfinance, fredapi, pykrx를 사용하여 주요 거시 경제 지표와 KOSPI/KOSDAQ 및 AI 관련 기술주 ETF를 추적하는 대시보드입니다.
 
 주요 기능
 
-다중 소스 데이터: YFinance (주식, ETF, 선물) 및 FRED (경제 지표)
+다중 소스 데이터: YFinance (주식, ETF, 선물), FRED (경제 지표), PYKRX (국내 증시 수급)
 
 핵심 지표: 금리, 신용, 원자재, AI 프록시(SMH, SKYY), 국내 증시
+
+국내 수급: KOSPI/KOSDAQ 외국인 일별 및 누적 순매수 차트
 
 기간 선택: 1개월, 3개월, YTD, 10년, 전체 등 빠른 기간 선택
 
@@ -14,13 +16,11 @@
 
 배포 (Streamlit Cloud)
 
-이 앱을 Streamlit Cloud에 배포하는 것이 가장 좋습니다.
-
 1. GitHub에 업로드
 
-dashboard.py (v21 코드)
+dashboard.py (v22 코드)
 
-requirements.txt (필수 라이브러리 목록)
+requirements.txt (필수 라이브러리 목록 - pykrx 추가됨)
 
 README.md (본 파일)
 
@@ -40,5 +40,3 @@ FRED_API_KEY = "YOUR_32_DIGIT_KEY_GOES_HERE"
 
 
 "Save"를 누른 후 "Deploy!" 버튼을 클릭합니다.
-
-배포가 완료되면, 생성된 고유 URL을 통해 어디서든 모바일/PC로 접속할 수 있습니다.
