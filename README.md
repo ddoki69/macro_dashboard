@@ -1,16 +1,14 @@
-글로벌 매크로 & 국내 증시 대시보드 (v26)
+글로벌 매크로 & 국내 증시 대시보드 (v21 - Stable Rollback)
 
-이 Streamlit 앱은 yfinance, fredapi, FinanceDataReader를 사용하여 주요 거시 경제 지표와 KOSPI/KOSDAQ 및 AI 관련 기술주 ETF를 추적하는 대시보드입니다.
+이 Streamlit 앱은 yfinance와 fredapi를 사용하여 주요 거시 경제 지표와 KOSPI/KOSDAQ 및 AI 관련 기술주 ETF를 추적하는 대시보드입니다.
 
-v26 변경 사항: pykrx 라이브러리를 FinanceDataReader로 교체하여 Streamlit Cloud 배포 오류를 해결합니다.
+v21은 pykrx와 FinanceDataReader로 인한 배포 오류를 해결하기 위해, 해당 기능(외국인 수급)을 제외한 안정 버전입니다.
 
 주요 기능
 
-다중 소스 데이터: YFinance (주식, ETF, 선물), FRED (경제 지표), FinanceDataReader (국내 증시 수급)
+다중 소스 데이터: YFinance (주식, ETF, 선물), FRED (경제 지표)
 
 핵심 지표: 금리, 신용, 원자재, AI 프록시(SMH, SKYY), 국내 증시
-
-국내 수급: KOSPI/KOSDAQ 외국인 일별 및 누적 순매수 차트
 
 기간 선택: 1개월, 3개월, YTD, 10년, 전체 등 빠른 기간 선택
 
@@ -20,13 +18,13 @@ v26 변경 사항: pykrx 라이브러리를 FinanceDataReader로 교체하여 St
 
 1. GitHub에 업로드 (★중요★)
 
-dashboard.py (v26 코드)
+dashboard.py (v21 코드)
 
-requirements.txt (v26 코드 - FinanceDataReader 및 의존성 추가됨)
+requirements.txt (v21 코드 - pykrx/fdr 제거됨)
 
 README.md (본 파일)
 
-runtime.txt (이 파일은 GitHub에서 삭제해주세요. (v25에서 삭제))
+runtime.txt (이 파일은 GitHub에서 삭제해주세요. 꼭 삭제해야 합니다.)
 
 2. Streamlit Cloud 설정 (중요: API 키)
 
