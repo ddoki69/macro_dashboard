@@ -1,10 +1,12 @@
-글로벌 매크로 & 국내 증시 대시보드 (v23)
+글로벌 매크로 & 국내 증시 대시보드 (v26)
 
-이 Streamlit 앱은 yfinance, fredapi, pykrx를 사용하여 주요 거시 경제 지표와 KOSPI/KOSDAQ 및 AI 관련 기술주 ETF를 추적하는 대시보드입니다.
+이 Streamlit 앱은 yfinance, fredapi, FinanceDataReader를 사용하여 주요 거시 경제 지표와 KOSPI/KOSDAQ 및 AI 관련 기술주 ETF를 추적하는 대시보드입니다.
+
+v26 변경 사항: pykrx 라이브러리를 FinanceDataReader로 교체하여 Streamlit Cloud 배포 오류를 해결합니다.
 
 주요 기능
 
-다중 소스 데이터: YFinance (주식, ETF, 선물), FRED (경제 지표), PYKRX (국내 증시 수급)
+다중 소스 데이터: YFinance (주식, ETF, 선물), FRED (경제 지표), FinanceDataReader (국내 증시 수급)
 
 핵심 지표: 금리, 신용, 원자재, AI 프록시(SMH, SKYY), 국내 증시
 
@@ -16,13 +18,15 @@
 
 배포 (Streamlit Cloud)
 
-1. GitHub에 업로드
+1. GitHub에 업로드 (★중요★)
 
-dashboard.py (v23 코드)
+dashboard.py (v26 코드)
 
-requirements.txt (v23 코드 - 버전 명시됨)
+requirements.txt (v26 코드 - FinanceDataReader 및 의존성 추가됨)
 
 README.md (본 파일)
+
+runtime.txt (이 파일은 GitHub에서 삭제해주세요. (v25에서 삭제))
 
 2. Streamlit Cloud 설정 (중요: API 키)
 
@@ -40,11 +44,3 @@ FRED_API_KEY = "YOUR_32_DIGIT_KEY_GOES_HERE"
 
 
 "Save"를 누른 후 "Deploy!" 버튼을 클릭합니다.
-
-문제 해결 (pykrx 오류 지속 시)
-
-GitHub에 위 3개 파일이 정확히 덮어쓰기되었는지 확인합니다.
-
-Streamlit Cloud 대시보드에서 앱의 ... 메뉴 -> **Reboot**를 실행합니다.
-
-그래도 안 되면, ... 메뉴 -> Settings -> Clear cache 버튼을 클릭합니다.
