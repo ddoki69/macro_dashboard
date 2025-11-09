@@ -1,14 +1,14 @@
-글로벌 매크로 & 국내 증시 대시보드 (v21 - Stable Rollback)
+글로벌 매크로 & 국내 증시 대시보드 (v22 - SOFR Added)
 
 이 Streamlit 앱은 yfinance와 fredapi를 사용하여 주요 거시 경제 지표와 KOSPI/KOSDAQ 및 AI 관련 기술주 ETF를 추적하는 대시보드입니다.
 
-v21은 pykrx와 FinanceDataReader로 인한 배포 오류를 해결하기 위해, 해당 기능(외국인 수급)을 제외한 안정 버전입니다.
+v22 변경 사항: SOFR (미국 단기 기준금리) 지표를 FRED API를 통해 추가했습니다.
 
 주요 기능
 
 다중 소스 데이터: YFinance (주식, ETF, 선물), FRED (경제 지표)
 
-핵심 지표: 금리, 신용, 원자재, AI 프록시(SMH, SKYY), 국내 증시
+핵심 지표: 금리 (SOFR, DFF, 10Y), 신용, 원자재, AI 프록시(SMH, SKYY), 국내 증시
 
 기간 선택: 1개월, 3개월, YTD, 10년, 전체 등 빠른 기간 선택
 
@@ -18,9 +18,9 @@ v21은 pykrx와 FinanceDataReader로 인한 배포 오류를 해결하기 위해
 
 1. GitHub에 업로드 (★중요★)
 
-dashboard.py (v21 코드)
+dashboard.py (v22 코드)
 
-requirements.txt (v21 코드 - pykrx/fdr 제거됨)
+requirements.txt (v22 코드 - 변경사항 없음)
 
 README.md (본 파일)
 
